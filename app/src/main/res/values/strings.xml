@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">ProxyMusicPlayer</string>
+
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="action_settings">Settings</string>
+</resources>
