@@ -2,6 +2,11 @@ package com.saraga.cakra.proxymusicplayer.utils;
 
 import android.util.Log;
 
+import com.squareup.okhttp.Headers;
+import com.squareup.okhttp.OkHttpClient;
+import com.squareup.okhttp.Request;
+import com.squareup.okhttp.Response;
+
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpResponseFactory;
@@ -24,6 +29,7 @@ import org.apache.http.io.HttpMessageParser;
 import org.apache.http.io.SessionInputBuffer;
 import org.apache.http.message.BasicHttpResponse;
 import org.apache.http.message.BasicLineParser;
+import org.apache.http.message.BufferedHeader;
 import org.apache.http.message.ParserCursor;
 import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HTTP;
@@ -32,6 +38,7 @@ import org.apache.http.util.CharArrayBuffer;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,6 +56,13 @@ public class ProxyThread implements Runnable {
     Socket mSocket;
     ServerSocket mServerSocket;
 
+    private static final String RESPONSE_LINE = "HTTP/1.1 200 OK",
+            ACCEPT_RANGE = "Accept-Ranges: bytes",
+            CONTENT_LENGTH = "Content-Length: ",
+            KEEP_ALIVE = "Keep-Alive: timeout=5, max=100",
+            CONNECTION = "Connection: Keep-Alive",
+            CONTENT_TYPE = "Content-Type: audio/mpeg";
+
 
     @Override
     public void run() {
@@ -56,6 +70,8 @@ public class ProxyThread implements Runnable {
 
         DataOutputStream out = null;
         BufferedReader in = null;
+        StringBuilder httpString = new StringBuilder();
+        InputStream stream;
         try {
             mServerSocket = new ServerSocket(port);
             mSocket = mServerSocket.accept();
@@ -64,33 +80,67 @@ public class ProxyThread implements Runnable {
             in = new BufferedReader(
                     new InputStreamReader(mSocket.getInputStream()));
 
-            String url = "http://stream.timesmusic.com/preview/mp3/1779.mp3";
-            HttpResponse realResponse = download(url);
+            String url = in.readLine();
+            int start = url.indexOf("url=") + 4;
+            int end = url.indexOf(" HTTP/1.1");
+            url = url.substring(start, end);
 
-            InputStream data = realResponse.getEntity().getContent();
-            StatusLine line = realResponse.getStatusLine();
-            HttpResponse response = new BasicHttpResponse(line);
-            response.setHeaders(realResponse.getAllHeaders());
 
-            Log.d("Akhil", "reading headers");
-            StringBuilder httpString = new StringBuilder();
-            httpString.append(response.getStatusLine().toString());
+            File cacheDir=new File(android.os.Environment.getExternalStorageDirectory(),"Music_Cakra");
+            if(!cacheDir.exists())
+                cacheDir.mkdirs();
 
-            httpString.append("\n");
-            for (Header h : response.getAllHeaders()) {
-                httpString.append(h.getName()).append(": ").append(h.getValue()).append(
-                        "\n");
+            File f = new File(cacheDir, "1779.mp3");
+            boolean exists = f.exists();
+            if (exists) {
+                stream = new FileInputStream(f);
+                httpString.append(RESPONSE_LINE)
+                        .append("\n")
+                        .append("Date: Fri, 23 Oct 2015 08:59:51 GMT")
+                        .append("\n")
+                        .append("Server: Apache/2.2.22 (Ubuntu)")
+                        .append("\n")
+                        .append("Last-Modified: Tue, 06 Mar 2012 19:56:53 GMT")
+                        .append("\n")
+                        .append("ETag: \"618b6-20ff8c-4ba9871bf4b40\"")
+                        .append("\n")
+                        .append(ACCEPT_RANGE)
+                        .append("\n")
+                        .append(CONTENT_LENGTH)
+                        .append(f.length())
+                        .append("\n")
+                        .append(KEEP_ALIVE)
+                        .append("\n")
+                        .append(CONNECTION)
+                        .append("\n")
+                        .append(CONTENT_TYPE)
+                        .append("\n");
+            } else {
+
+                f = new File(cacheDir, "1779.part");
+                Response okHttpResponse = getSongFromUrl(url);
+                stream = okHttpResponse.body().byteStream();
+
+                HttpResponse realResponse = download(url);
+
+//            InputStream data = realResponse.getEntity().getContent();
+                StatusLine line = realResponse.getStatusLine();
+                HttpResponse response = new BasicHttpResponse(line);
+                response.setHeaders(realResponse.getAllHeaders());
+
+                Log.d("Akhil", "reading headers");
+                httpString.append(response.getStatusLine().toString());
+
+                httpString.append("\n");
+                for (Header h : response.getAllHeaders()) {
+                    httpString.append(h.getName()).append(": ").append(h.getValue()).append(
+                            "\n");
+                }
+                httpString.append("\n");
+                Log.d("Akhil", "headers done");
             }
-            httpString.append("\n");
-            Log.d("Akhil", "headers done");
 
             try {
-
-                File cacheDir=new File(android.os.Environment.getExternalStorageDirectory(),"Music_Cakra");
-                if(!cacheDir.exists())
-                    cacheDir.mkdirs();
-
-                File f=new File(cacheDir,"1779.mp3");
 
                 byte[] buffer = httpString.toString().getBytes();
                 int readBytes;
@@ -100,17 +150,25 @@ public class ProxyThread implements Runnable {
 
                 OutputStream output = null;
                 try {
-                    output = new FileOutputStream(f);
+                    if (!exists) {
+                        output = new FileOutputStream(f);
+                    }
 
                     // Start streaming content.
                     byte[] buff = new byte[1024 * 64];
-                    while ((readBytes = data.read(buff, 0, buff.length)) != -1) {
+                    while ((readBytes = stream.read(buff, 0, buff.length)) != -1) {
                         out.write(buff, 0, readBytes);
-                        output.write(buff, 0, readBytes);
+                        if (!exists) {
+                            output.write(buff, 0, readBytes);
+                        }
                         Log.d("Akhil", readBytes+" bytes written");
                     }
-
-                    Log.d("Akhil", "Completed writing");
+                    if (!exists) {
+                        String filename = f.getAbsolutePath();
+                        filename = filename.substring(0, filename.length() - 4);
+                        f.renameTo(new File(filename + "mp3"));
+                        Log.d("Akhil", "Completed writing");
+                    }
                 } catch (IOException e) {
                     Log.e("Akhil", e.getMessage(), e);
                 } finally {
@@ -126,8 +184,8 @@ public class ProxyThread implements Runnable {
             } catch (Exception e) {
                 Log.e("Akhil", e.getMessage(), e);
             } finally {
-                if (data != null) {
-                    data.close();
+                if (stream != null) {
+                    stream.close();
                 }
                 mSocket.close();
             }
@@ -150,6 +208,26 @@ public class ProxyThread implements Runnable {
                 }
             }
         }
+    }
+
+    public void release() {
+        if(mServerSocket != null) {
+            try {
+                mServerSocket.close();
+                mServerSocket = null;
+            } catch(IOException e) {
+                e.printStackTrace();
+            }
+        }
+     }
+
+    private Response getSongFromUrl(String url) throws IOException {
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder()
+                .url(url)
+                .build();
+
+        return client.newCall(request).execute();
     }
 
     private HttpResponse download(String url) {

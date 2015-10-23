@@ -25,6 +25,8 @@ public class MainActivity extends AppCompatActivity
     private MediaPlayer mMainPlayer;
     private Handler mHandler;
 
+    private ProxyThread mProxy;
+
     private Runnable mTimelyRunnable = new Runnable() {
 
         @Override
@@ -36,7 +38,7 @@ public class MainActivity extends AppCompatActivity
                 mIsAutoProgress = true;
                 mProgressBar.setProgress(getProgress());
             }
-            if (mMainPlayer.isPlaying()) {
+            if (mMainPlayer != null && mMainPlayer.isPlaying()) {
                 mHandler.postDelayed(mTimelyRunnable, 300);
             }
         }
@@ -101,7 +103,11 @@ public class MainActivity extends AppCompatActivity
     }
 
     private int getProgress() {
-        return Math.round((mMainPlayer.getCurrentPosition() * 100)/mMainPlayer.getDuration());
+        if (mMainPlayer != null) {
+            return Math.round((mMainPlayer.getCurrentPosition() * 100) / mMainPlayer.getDuration());
+        } else {
+            return 0;
+        }
     }
 
 
@@ -126,7 +132,7 @@ public class MainActivity extends AppCompatActivity
     public void playFromBeginning() {
         mMainPlayer.reset();
         try {
-            mMainPlayer.setDataSource("http://127.0.0.1:8080");
+            mMainPlayer.setDataSource("http://127.0.0.1:8080?url=http://stream.timesmusic.com/preview/mp3/1779.mp3");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -138,7 +144,8 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void startProxy() {
-        new Thread(new ProxyThread()).start();
+        mProxy = new ProxyThread();
+        new Thread(mProxy).start();
     }
 
     @Override
@@ -165,5 +172,9 @@ public class MainActivity extends AppCompatActivity
         super.onDestroy();
         mMainPlayer.release();
         mMainPlayer = null;
+        if (mProxy != null) {
+            mProxy.release();
+            mProxy = null;
+        }
     }
 }
