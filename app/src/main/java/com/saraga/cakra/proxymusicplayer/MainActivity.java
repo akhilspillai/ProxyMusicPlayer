@@ -62,10 +62,9 @@ public class MainActivity extends AppCompatActivity
         mProgressBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (mMainPlayer.isPlaying() && !mIsAutoProgress) {
+                if (mMainPlayer != null && mMainPlayer.isPlaying() && fromUser) {
                     mMainPlayer.seekTo(Math.round((mMainPlayer.getDuration() * progress) / 100));
                 }
-                mIsAutoProgress = false;
             }
 
             @Override
@@ -132,7 +131,7 @@ public class MainActivity extends AppCompatActivity
     public void playFromBeginning() {
         mMainPlayer.reset();
         try {
-            mMainPlayer.setDataSource("http://127.0.0.1:8080?url=http://stream.timesmusic.com/preview/mp3/1779.mp3");
+            mMainPlayer.setDataSource("http://127.0.0.1:8080?url=http://db.oruwebsite.com/Tamil/Songs/25%20-%20Religous%20Albums/Devotionals/Brinthavanam%20Nithiyasree%20Carnatic/Kanna%20Vaa.mp3");
         } catch (IOException e) {
             e.printStackTrace();
         }

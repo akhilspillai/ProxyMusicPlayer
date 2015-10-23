@@ -68,15 +68,11 @@ public class ProxyThread implements Runnable {
     public void run() {
         int port = 8080;
 
-        DataOutputStream out = null;
         BufferedReader in = null;
-        StringBuilder httpString = new StringBuilder();
-        InputStream stream;
         try {
             mServerSocket = new ServerSocket(port);
             mSocket = mServerSocket.accept();
 
-            out = new DataOutputStream(mSocket.getOutputStream());
             in = new BufferedReader(
                     new InputStreamReader(mSocket.getInputStream()));
 
@@ -86,123 +82,114 @@ public class ProxyThread implements Runnable {
             url = url.substring(start, end);
 
 
-            File cacheDir=new File(android.os.Environment.getExternalStorageDirectory(),"Music_Cakra");
-            if(!cacheDir.exists())
+            File cacheDir = new File(android.os.Environment.getExternalStorageDirectory(), "Music_Cakra");
+            if (!cacheDir.exists())
                 cacheDir.mkdirs();
 
             File f = new File(cacheDir, "1779.mp3");
-            boolean exists = f.exists();
-            if (exists) {
-                stream = new FileInputStream(f);
-                httpString.append(RESPONSE_LINE)
-                        .append("\n")
-                        .append("Date: Fri, 23 Oct 2015 08:59:51 GMT")
-                        .append("\n")
-                        .append("Server: Apache/2.2.22 (Ubuntu)")
-                        .append("\n")
-                        .append("Last-Modified: Tue, 06 Mar 2012 19:56:53 GMT")
-                        .append("\n")
-                        .append("ETag: \"618b6-20ff8c-4ba9871bf4b40\"")
-                        .append("\n")
-                        .append(ACCEPT_RANGE)
-                        .append("\n")
-                        .append(CONTENT_LENGTH)
-                        .append(f.length())
-                        .append("\n")
-                        .append(KEEP_ALIVE)
-                        .append("\n")
-                        .append(CONNECTION)
-                        .append("\n")
-                        .append(CONTENT_TYPE)
-                        .append("\n");
+            if (f.exists()) {
+                playFromFile(f);
             } else {
-
                 f = new File(cacheDir, "1779.part");
-                Response okHttpResponse = getSongFromUrl(url);
-                stream = okHttpResponse.body().byteStream();
+                playFromUrl(url, f);
+            }
 
-                HttpResponse realResponse = download(url);
+
+        } catch (Exception e) {
+            Log.e("Akhil", e.getMessage(), e);
+        } finally {
+            try {
+                if (in != null) {
+                    in.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void playFromFile(File f) throws IOException {
+        InputStream stream = new FileInputStream(f);
+        StringBuilder httpString = new StringBuilder();
+        httpString.append("HTTP/1.1 206 Partial Content\r\nAccept-Ranges: bytes\r\nContent-Length: ")
+                .append(Long.toString(f.length()))
+                .append("\r\nContent-Range: bytes ")
+                .append(Long.toString(0))
+                .append("-")
+                .append(Long.toString(f.length() - 1))
+                .append("/")
+                .append(f.length())
+                .append("\r\nContent-Type: application/octet-stream\r\n\r\n");
+
+        Log.d("Akhil", httpString.toString());
+
+        DataOutputStream out = new DataOutputStream(mSocket.getOutputStream());
+        byte[] buffer = httpString.toString().getBytes();
+        int readBytes;
+        Log.d("Akhil", "writing to client");
+        out.write(buffer, 0, buffer.length);
+
+        byte[] buff = new byte[1024 * 64];
+        while ((readBytes = stream.read(buff, 0, buff.length)) != -1) {
+            out.write(buff, 0, readBytes);
+            Log.d("Akhil", readBytes + " bytes written");
+        }
+    }
+
+    private void playFromUrl(String url, File f) throws IOException {
+        OutputStream output = null;
+        try {
+            DataOutputStream out = new DataOutputStream(mSocket.getOutputStream());
+            StringBuilder httpString = new StringBuilder();
+            Response okHttpResponse = getSongFromUrl(url);
+            InputStream stream = okHttpResponse.body().byteStream();
+
+            HttpResponse realResponse = download(url);
 
 //            InputStream data = realResponse.getEntity().getContent();
-                StatusLine line = realResponse.getStatusLine();
-                HttpResponse response = new BasicHttpResponse(line);
-                response.setHeaders(realResponse.getAllHeaders());
+            StatusLine line = realResponse.getStatusLine();
+            HttpResponse response = new BasicHttpResponse(line);
+            response.setHeaders(realResponse.getAllHeaders());
 
-                Log.d("Akhil", "reading headers");
-                httpString.append(response.getStatusLine().toString());
+            Log.d("Akhil", "reading headers");
+            httpString.append(response.getStatusLine().toString());
 
-                httpString.append("\n");
-                for (Header h : response.getAllHeaders()) {
+            httpString.append("\n");
+            for (Header h : response.getAllHeaders()) {
+                if (h.getName().equalsIgnoreCase("Date")) {
+                    httpString.append(h.getName()).append(": ").append("Fri, 23 Oct 2015 08:50:03 GMT").append(
+                            "\n");
+                } else {
                     httpString.append(h.getName()).append(": ").append(h.getValue()).append(
                             "\n");
                 }
-                httpString.append("\n");
-                Log.d("Akhil", "headers done");
             }
+            httpString.append("\n");
+            Log.d("Akhil", "headers done");
 
-            try {
+            byte[] buffer = httpString.toString().getBytes();
+            int readBytes;
+            Log.d("Akhil", "writing to client");
+            out.write(buffer, 0, buffer.length);
 
-                byte[] buffer = httpString.toString().getBytes();
-                int readBytes;
-                Log.d("Akhil", "writing to client");
-                out.write(buffer, 0, buffer.length);
+            output = new FileOutputStream(f);
 
-
-                OutputStream output = null;
-                try {
-                    if (!exists) {
-                        output = new FileOutputStream(f);
-                    }
-
-                    // Start streaming content.
-                    byte[] buff = new byte[1024 * 64];
-                    while ((readBytes = stream.read(buff, 0, buff.length)) != -1) {
-                        out.write(buff, 0, readBytes);
-                        if (!exists) {
-                            output.write(buff, 0, readBytes);
-                        }
-                        Log.d("Akhil", readBytes+" bytes written");
-                    }
-                    if (!exists) {
-                        String filename = f.getAbsolutePath();
-                        filename = filename.substring(0, filename.length() - 4);
-                        f.renameTo(new File(filename + "mp3"));
-                        Log.d("Akhil", "Completed writing");
-                    }
-                } catch (IOException e) {
-                    Log.e("Akhil", e.getMessage(), e);
-                } finally {
-                    if (output != null) {
-                        try {
-                            output.flush();
-                            output.close();
-                        } catch (IOException e) {
-                            Log.e("Akhil", e.getMessage(), e);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                Log.e("Akhil", e.getMessage(), e);
-            } finally {
-                if (stream != null) {
-                    stream.close();
-                }
-                mSocket.close();
+            // Start streaming content.
+            byte[] buff = new byte[1024 * 64];
+            while ((readBytes = stream.read(buff, 0, buff.length)) != -1) {
+                out.write(buff, 0, readBytes);
+                output.write(buff, 0, readBytes);
+                Log.d("Akhil", readBytes + " bytes written");
             }
-
-        } catch (IOException e) {
-            Log.e("Akhil", e.getMessage(), e);
+            String filename = f.getAbsolutePath();
+            filename = filename.substring(0, filename.length() - 4);
+            f.renameTo(new File(filename + "mp3"));
+            Log.d("Akhil", "Completed writing");
         } finally {
-            if (out != null) {
+            if (output != null) {
                 try {
-                    out.close();
-                } catch (IOException e) {
-                    Log.e("Akhil", e.getMessage(), e);
-                }
-            }
-            if (in != null) {
-                try {
-                    in.close();
+                    output.flush();
+                    output.close();
                 } catch (IOException e) {
                     Log.e("Akhil", e.getMessage(), e);
                 }
@@ -211,15 +198,15 @@ public class ProxyThread implements Runnable {
     }
 
     public void release() {
-        if(mServerSocket != null) {
+        if (mServerSocket != null) {
             try {
                 mServerSocket.close();
                 mServerSocket = null;
-            } catch(IOException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-     }
+    }
 
     private Response getSongFromUrl(String url) throws IOException {
         OkHttpClient client = new OkHttpClient();
