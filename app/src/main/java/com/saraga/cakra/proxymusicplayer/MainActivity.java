@@ -103,10 +103,12 @@ public class MainActivity extends AppCompatActivity
 
     private int getProgress() {
         if (mMainPlayer != null) {
-            return Math.round((mMainPlayer.getCurrentPosition() * 100) / mMainPlayer.getDuration());
-        } else {
-            return 0;
+            int duration = mMainPlayer.getDuration();
+            if (duration != 0) {
+                return Math.round((mMainPlayer.getCurrentPosition() * 100) / duration);
+            }
         }
+        return 0;
     }
 
 
@@ -131,7 +133,11 @@ public class MainActivity extends AppCompatActivity
     public void playFromBeginning() {
         mMainPlayer.reset();
         try {
-            mMainPlayer.setDataSource("http://127.0.0.1:8080?url=http://db.oruwebsite.com/Tamil/Songs/25%20-%20Religous%20Albums/Devotionals/Brinthavanam%20Nithiyasree%20Carnatic/Kanna%20Vaa.mp3");
+//            String url = "http://stream.timesmusic.com/preview/mp3/1779.mp3";
+
+            String url = "http://db.oruwebsite.com/Tamil/Songs/25%20-%20Religous%20Albums/Devotionals/Brinthavanam%20Nithiyasree%20Carnatic/Kanna%20Vaa.mp3";
+
+            mMainPlayer.setDataSource("http://127.0.0.1:8080?url="+url);
         } catch (IOException e) {
             e.printStackTrace();
         }
